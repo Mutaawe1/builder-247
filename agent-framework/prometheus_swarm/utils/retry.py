@@ -8,14 +8,17 @@ from tenacity import (
     retry_if_exception_type,
 )
 from prometheus_swarm.utils.logging import log_error
-from prometheus_swarm.utils.errors import ClientAPIError
+from prometheus_swarm.utils.errors import APIError, RateLimitError
+
+# Create an alias for backwards compatibility
+ClientAPIError = APIError
 
 T = TypeVar("T")
 
 
 def is_retryable_error(error: Exception) -> bool:
     """Check if an error is retryable."""
-    if isinstance(error, ClientAPIError):
+    if isinstance(error, APIError):
         # Check if the error has a status code >= 429 (rate limit or server error)
         return error.status_code >= 429
     return False
@@ -30,7 +33,7 @@ def with_retry(
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @retry(
-            retry=retry_if_exception_type(ClientAPIError),
+            retry=retry_if_exception_type((RateLimitError, APIError)),
             stop=stop_after_attempt(max_attempts),
             wait=wait_exponential(multiplier=base_delay, max=max_delay),
             before_sleep=lambda retry_state: log_error(
